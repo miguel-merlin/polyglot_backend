@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from models.Story import Story
 from db.database import collection, grid_fs_bucket
 from enum import Enum
+import datetime
 
 router = APIRouter()
 
@@ -22,6 +23,8 @@ async def create_story(story: Story,
                        content_cherokee: UploadFile = File(...), 
                        image: UploadFile = File(...)):
     story_data = story.dict()
+    if "createdAt" not in story_data or story_data["createdAt"] is None:
+        story_data["createdAt"] = datetime.now()
     story_id = await collection.insert_one(story_data).inserted_id
     
     content_en_id = await grid_fs_bucket.upload_from_stream(
