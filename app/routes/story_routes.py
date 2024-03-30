@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, status, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from models import Story
-from db import collection, grid_fs_bucket
+from models.Story import Story
+from db.database import collection, grid_fs_bucket
 from fastapi import Request
 from enum import Enum
 

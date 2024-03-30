@@ -1,8 +1,6 @@
-from pydantic import BaseModel
 from enum import Enum
 
-class Genre(BaseModel):
+class Genre(Enum):
     MYTHOLOGY = "mythology"
     FOLKLORE = "folklore"
     HISTORY = "history"
-    

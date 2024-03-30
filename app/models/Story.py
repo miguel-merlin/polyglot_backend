@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from Genre import Genre
+from models.Genre import Genre
 
 class Story(BaseModel):
     title: str
