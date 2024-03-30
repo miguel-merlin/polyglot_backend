@@ -3,4 +3,5 @@
 
 /backend
 
-__pycache__/
+# Ignore __pycache__ in src
+/src/**/__pycache__
