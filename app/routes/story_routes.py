@@ -1,9 +1,6 @@
-from fastapi import APIRouter, HTTPException, status, UploadFile, File
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from models.Story import Story
 from db.database import collection, grid_fs_bucket
-from fastapi import Request
 from enum import Enum
 
 router = APIRouter()
@@ -95,17 +92,3 @@ async def delete_item(story_id: str):
     if deleted_item:
         return deleted_item
     raise HTTPException(status_code=404, detail="Item not found")
-
-@router.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND,
-        content={"message": "Path not found"},
-    )
-
-@router.get("/{_:path}")
-async def catch_all(_):
-    return JSONResponse(
-        status_code=404,
-        content={"message": "Path not found"},
-    )
