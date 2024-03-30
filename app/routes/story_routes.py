@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from models import Story
-from db import collection
+from db import collection, grid_fs_bucket
 from fastapi import Request
+from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
@@ -18,18 +19,36 @@ async def read_items():
         items.append(item)
     return items
 
-@router.post("/story/", response_model=Story)
-async def create_story(story: Story):
-    result = await collection.insert_one(story.dict())
-    story.id = str(result.inserted_id)
-    return story
+@router.post("/story/")
+async def create_story(story: Story, file: UploadFile = File(...)):
+    story_data = story.dict()
+    story_id = await collection.insert_one(story_data).inserted_id
+    
+    await grid_fs_bucket.upload_from_stream(
+        file.filename, 
+        file.file.read(), 
+        metadata={"story_id": str(story_id)}
+    )
+    
+    return {"story_id": str(story_id), "filename": file.filename}
 
-@router.get("/story/{story_id}", response_model=Story)
-async def read_item(story_id: str):
-    item = await collection.find_one({"_id": story_id})
-    if item:
-        return item
-    raise HTTPException(status_code=404, detail="Item not found")
+@router.get("/story/{story_id}")
+async def get_story_with_metadata(story_id: str):
+    story_data = await collection.find_one({"_id": story_id})
+    if not story_data:
+        raise HTTPException(status_code=404, detail="Story not found")
+    
+    gridfs_file = await grid_fs_bucket.find_one({"metadata.story_id": story_id})
+    if not gridfs_file:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    response_data = {
+        "title": story_data["title"],
+        "created_at": story_data["created_at"],
+        "content_id": str(gridfs_file._id),
+        "content_access": f"/story/content/{story_id}"
+    }
+    return response_data
 
 @router.put("/story/{story_id}", response_model=Story)
 async def update_item(story_id: str, story: Story):
