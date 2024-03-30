@@ -18,5 +18,5 @@ jobs:
       with:
         push: true
         tags: |
-          ghcr.io/stevensblueprint/nycmesh-node-visualizer:${{ github.sha }}
-          ghcr.io/stevensblueprint/nycmesh-node-visualizer:latest
+          ghcr.io/miguelmerlin/polyglot_backend:${{ github.sha }}
+          ghcr.io/miguelmerlin/polyglot_backend:latest
