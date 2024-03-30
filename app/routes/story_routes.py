@@ -4,6 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from models import Story
 from db import collection, grid_fs_bucket
 from fastapi import Request
+from enum import Enum
 
 router = APIRouter()
 
@@ -55,6 +56,7 @@ async def create_story(story: Story,
     
     return {
         "story_id": str(story_id), 
+        "genre": story.genre.value if isinstance(story.genre, Enum) else story.genre,
         "content_en_id": str(content_en_id), 
         "content_cherokee_id": str(content_cherokee_id), 
         "image_id": str(image_id)
@@ -70,6 +72,7 @@ async def get_story_with_metadata_and_multilingual_content(story_id: str):
     response_data = {
         "title": story_data["title"],
         "created_at": story_data["created_at"],
+        "genre": story_data["genre"],
         "content_en_access": f"/story/content/{story_data['content_en_id']}",
         "content_cherokee_access": f"/story/content/{story_data['content_cherokee_id']}",
         "image_access": f"/story/image/{story_data['image_id']}"
