@@ -23,32 +23,27 @@ async def create_story(story: Story,
                        content_en: UploadFile = File(...), 
                        content_cherokee: UploadFile = File(...), 
                        image: UploadFile = File(...)):
-    # Insert story metadata into the collection
     story_data = story.dict()
     story_id = await collection.insert_one(story_data).inserted_id
     
-    # Store the English content in GridFS
     content_en_id = await grid_fs_bucket.upload_from_stream(
         content_en.filename, 
         content_en.file.read(), 
         metadata={"story_id": str(story_id), "language": "en"}
     )
     
-    # Store the Cherokee content in GridFS
     content_cherokee_id = await grid_fs_bucket.upload_from_stream(
         content_cherokee.filename, 
         content_cherokee.file.read(), 
         metadata={"story_id": str(story_id), "language": "cherokee"}
     )
     
-    # Store the image in GridFS
     image_id = await grid_fs_bucket.upload_from_stream(
         image.filename, 
         image.file.read(), 
         metadata={"story_id": str(story_id), "type": "image"}
     )
     
-    # Update the story document with the file IDs
     await collection.update_one(
         {"_id": story_id},
         {"$set": {
@@ -68,12 +63,10 @@ async def create_story(story: Story,
 
 @router.get("/story/{story_id}")
 async def get_story_with_metadata_and_multilingual_content(story_id: str):
-    # Fetch the story metadata from your stories collection
     story_data = await collection.find_one({"_id": story_id})
     if not story_data:
         raise HTTPException(status_code=404, detail="Story not found")
     
-    # Construct URLs or methods for accessing the English and Cherokee content and image
     response_data = {
         "title": story_data["title"],
         "created_at": story_data["created_at"],
