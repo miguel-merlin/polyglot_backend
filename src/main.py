@@ -28,6 +28,14 @@ class Story(BaseModel):
 async def root():
     return {"Welcome to Polyglot API"}
 
+# Get all
+@app.get("/stories/")
+async def read_items():
+    items = []
+    async for item in collection.find():
+        items.append(item)
+    return items
+
 @app.post("/story/", response_model=Story)
 async def create_story(story: Story):
     result = await collection.insert_one(story.dict())
