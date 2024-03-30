@@ -1,87 +1,122 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Form, HTTPException, UploadFile, File
 from models.Story import Story
 from db.database import collection, grid_fs_bucket
-from enum import Enum
 import datetime
+import models.Genre as Genre
+from bson import ObjectId
+from fastapi.encoders import jsonable_encoder
+from json import JSONEncoder
+from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter()
+
+class CustomJSONEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, ObjectId):
+            return str(obj)
+        return JSONEncoder.default(self, obj)
 
 @router.get("/")
 async def root():
     return {"Welcome to Polyglot API"}
 
+@router.get("/file/{file_id}")
+async def get_file(file_id: str):
+    try:
+        grid_out = await grid_fs_bucket.open_download_stream(ObjectId(file_id))
+        
+        async def file_generator(file_stream):
+            while True:
+                chunk = await file_stream.read(8192)  # Read in chunks of 8KB
+                if not chunk:
+                    break
+                yield chunk
+        
+        # Create a streaming response
+        return StreamingResponse(file_generator(grid_out), media_type="application/octet-stream")
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="File not found")
+
 @router.get("/stories/")
 async def read_items():
     items = []
     async for item in collection.find():
+        item = jsonable_encoder(item, custom_encoder={ObjectId: lambda oid: str(oid)})
         items.append(item)
-    return items
+    return JSONResponse(content=items)
 
 @router.post("/story/")
-async def create_story(story: Story, 
+async def create_story(title: str = Form(...), 
+                       genre: str = Form(...), 
                        content_en: UploadFile = File(...), 
                        content_cherokee: UploadFile = File(...), 
                        image: UploadFile = File(...)):
-    story_data = story.dict()
-    if "createdAt" not in story_data or story_data["createdAt"] is None:
-        story_data["createdAt"] = datetime.now()
-    story_id = await collection.insert_one(story_data).inserted_id
+    story_data = Story(title=title, genre=genre, created_at=datetime.datetime.now()).dict()
+    story_data['genre'] = Genre.Genre[genre.upper()].value
+    story_id = await collection.insert_one(story_data)
+    inserted_id = str(story_id.inserted_id)
     
     content_en_id = await grid_fs_bucket.upload_from_stream(
         content_en.filename, 
         content_en.file.read(), 
-        metadata={"story_id": str(story_id), "language": "en"}
+        metadata={"story_id": inserted_id, "language": "en"}
     )
     
     content_cherokee_id = await grid_fs_bucket.upload_from_stream(
         content_cherokee.filename, 
         content_cherokee.file.read(), 
-        metadata={"story_id": str(story_id), "language": "cherokee"}
+        metadata={"story_id": inserted_id, "language": "cherokee"}
     )
     
     image_id = await grid_fs_bucket.upload_from_stream(
         image.filename, 
-        image.file.read(), 
-        metadata={"story_id": str(story_id), "type": "image"}
+        image.file.read(),
+        metadata={"story_id": inserted_id, "type": "image"}
     )
     
+    # Update the story with the content and image IDs
+    story_data['content_en'] = str(content_en_id)
+    story_data['content_cherokee'] = str(content_cherokee_id)
+    story_data['image'] = str(image_id)
+    
     await collection.update_one(
-        {"_id": story_id},
+        {"_id": ObjectId(inserted_id)},
         {"$set": {
             "content_en_id": str(content_en_id), 
-            "content_cherokee_id": str(content_cherokee_id), 
+            "content_chr_id": str(content_cherokee_id), 
             "image_id": str(image_id)
         }}
     )
     
     return {
-        "story_id": str(story_id), 
-        "genre": story.genre.value if isinstance(story.genre, Enum) else story.genre,
-        "content_en_id": str(content_en_id), 
-        "content_cherokee_id": str(content_cherokee_id), 
+        "story_id": str(story_id),
+        "title": title,
+        "genre": genre,
+        "content_en_id": str(content_en_id),
+        "content_chr_id": str(content_cherokee_id),
         "image_id": str(image_id)
     }
 
-
 @router.get("/story/{story_id}")
 async def get_story_with_metadata_and_multilingual_content(story_id: str):
+    try:
+        story_id = ObjectId(story_id)
+    except:
+        raise HTTPException(status_code=404, detail="Invalid ID")
     story_data = await collection.find_one({"_id": story_id})
     if not story_data:
         raise HTTPException(status_code=404, detail="Story not found")
+    story_data = jsonable_encoder(story_data, custom_encoder={ObjectId: lambda oid: str(oid)})
     
-    response_data = {
-        "title": story_data["title"],
-        "created_at": story_data["created_at"],
-        "genre": story_data["genre"],
-        "content_en_access": f"/story/content/{story_data['content_en_id']}",
-        "content_cherokee_access": f"/story/content/{story_data['content_cherokee_id']}",
-        "image_access": f"/story/image/{story_data['image_id']}"
-    }
-    return response_data
+    return JSONResponse(content=story_data)
 
 
 @router.put("/story/{story_id}", response_model=Story)
 async def update_item(story_id: str, story: Story):
+    try:
+        story_id = ObjectId(story_id)
+    except:
+        raise HTTPException(status_code=404, detail="Invalid ID")
     updated_item = await collection.find_one_and_update(
         {"_id": story_id}, {"$set": story.dict()}
     )
@@ -91,6 +126,10 @@ async def update_item(story_id: str, story: Story):
 
 @router.delete("/story/{story_id}", response_model=Story)
 async def delete_item(story_id: str):
+    try:
+        story_id = ObjectId(story_id)
+    except:
+        raise HTTPException(status_code=404, detail="Invalid ID")
     deleted_item = await collection.find_one_and_delete({"_id": story_id})
     if deleted_item:
         return deleted_item
