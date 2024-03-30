@@ -1,7 +1,14 @@
-# Ignore .env
+# Environment variables
 .env
 
-/backend
+# Backend directory
+/backend/
 
-# Ignore __pycache__ in src
-/src/**/__pycache__
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Python Debugging
+.ipynb_checkpoints
