@@ -19,35 +19,54 @@ async def read_items():
     return items
 
 @router.post("/story/")
-async def create_story(story: Story, file: UploadFile = File(...)):
+async def create_story(story: Story, file: UploadFile = File(...), image: UploadFile = File(...)):
     story_data = story.dict()
     story_id = await collection.insert_one(story_data).inserted_id
     
-    await grid_fs_bucket.upload_from_stream(
+    content_file_id = await grid_fs_bucket.upload_from_stream(
         file.filename, 
         file.file.read(), 
-        metadata={"story_id": str(story_id)}
+        metadata={"story_id": str(story_id), "type": "content"}
     )
     
-    return {"story_id": str(story_id), "filename": file.filename}
+    image_file_id = await grid_fs_bucket.upload_from_stream(
+        image.filename, 
+        image.file.read(), 
+        metadata={"story_id": str(story_id), "type": "image"}
+    )
+
+    await collection.update_one(
+        {"_id": story_id},
+        {"$set": {"content_file_id": str(content_file_id), "image_file_id": str(image_file_id)}}
+    )
+    
+    return {
+        "story_id": str(story_id), 
+        "content_file_id": str(content_file_id), 
+        "image_file_id": str(image_file_id),
+        "content_access": f"/story/content/{story_id}",
+        "image_access": f"/story/image/{story_id}"
+    }
 
 @router.get("/story/{story_id}")
-async def get_story_with_metadata(story_id: str):
+async def get_story_with_metadata_and_image(story_id: str):
     story_data = await collection.find_one({"_id": story_id})
     if not story_data:
         raise HTTPException(status_code=404, detail="Story not found")
     
-    gridfs_file = await grid_fs_bucket.find_one({"metadata.story_id": story_id})
-    if not gridfs_file:
-        raise HTTPException(status_code=404, detail="Content not found")
-
+    image_file_id = story_data.get("image_file_id")
+    if image_file_id:
+        image_access_url = f"/story/image/{image_file_id}" 
+    else:
+        image_access_url = None
+    
     response_data = {
         "title": story_data["title"],
         "created_at": story_data["created_at"],
-        "content_id": str(gridfs_file._id),
-        "content_access": f"/story/content/{story_id}"
+        "image_access": image_access_url
     }
     return response_data
+
 
 @router.put("/story/{story_id}", response_model=Story)
 async def update_item(story_id: str, story: Story):
