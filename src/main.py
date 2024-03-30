@@ -5,39 +5,27 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
-from pymongo.mongo_client import MongoClient
-from pymongo.server_api import ServerApi
 
 # Initialize app
 app = FastAPI()
 
 load_dotenv()
-
 # MongoDB connection
-URI = os.getenv("URI")
-client = MongoClient(URI, server_api=ServerApi("1"))
-
-# Check if MongoDB is connected
-try:
-    print("Connecting to MongoDB")
-    client.admin.command("ping")
-    print("Connected to MongoDB")
-except Exception as e:
-    print(e)
-    exit()
+MONGO_URL = os.getenv("URI")
+client = AsyncIOMotorClient(MONGO_URL)
+database = client["polyglot"]
+collection = database["story"]
 
 
 # Check if MongoDB is connected
 @app.on_event("startup")
 async def startup():
     try:
-        print("INFO: Connecting to MongoDB")
+        print("Connecting to MongoDB")
         await client.server_info()
         print("Connected to MongoDB")
     except Exception as e:
         print(f"An error occurred: {e}")
-
-collection = client["polyglot"]["stories"]
 
 # Model
 class Story(BaseModel):
