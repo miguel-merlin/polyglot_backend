@@ -19,51 +19,67 @@ async def read_items():
     return items
 
 @router.post("/story/")
-async def create_story(story: Story, file: UploadFile = File(...), image: UploadFile = File(...)):
+async def create_story(story: Story, 
+                       content_en: UploadFile = File(...), 
+                       content_cherokee: UploadFile = File(...), 
+                       image: UploadFile = File(...)):
+    # Insert story metadata into the collection
     story_data = story.dict()
     story_id = await collection.insert_one(story_data).inserted_id
     
-    content_file_id = await grid_fs_bucket.upload_from_stream(
-        file.filename, 
-        file.file.read(), 
-        metadata={"story_id": str(story_id), "type": "content"}
+    # Store the English content in GridFS
+    content_en_id = await grid_fs_bucket.upload_from_stream(
+        content_en.filename, 
+        content_en.file.read(), 
+        metadata={"story_id": str(story_id), "language": "en"}
     )
     
-    image_file_id = await grid_fs_bucket.upload_from_stream(
+    # Store the Cherokee content in GridFS
+    content_cherokee_id = await grid_fs_bucket.upload_from_stream(
+        content_cherokee.filename, 
+        content_cherokee.file.read(), 
+        metadata={"story_id": str(story_id), "language": "cherokee"}
+    )
+    
+    # Store the image in GridFS
+    image_id = await grid_fs_bucket.upload_from_stream(
         image.filename, 
         image.file.read(), 
         metadata={"story_id": str(story_id), "type": "image"}
     )
-
+    
+    # Update the story document with the file IDs
     await collection.update_one(
         {"_id": story_id},
-        {"$set": {"content_file_id": str(content_file_id), "image_file_id": str(image_file_id)}}
+        {"$set": {
+            "content_en_id": str(content_en_id), 
+            "content_cherokee_id": str(content_cherokee_id), 
+            "image_id": str(image_id)
+        }}
     )
     
     return {
         "story_id": str(story_id), 
-        "content_file_id": str(content_file_id), 
-        "image_file_id": str(image_file_id),
-        "content_access": f"/story/content/{story_id}",
-        "image_access": f"/story/image/{story_id}"
+        "content_en_id": str(content_en_id), 
+        "content_cherokee_id": str(content_cherokee_id), 
+        "image_id": str(image_id)
     }
 
+
 @router.get("/story/{story_id}")
-async def get_story_with_metadata_and_image(story_id: str):
+async def get_story_with_metadata_and_multilingual_content(story_id: str):
+    # Fetch the story metadata from your stories collection
     story_data = await collection.find_one({"_id": story_id})
     if not story_data:
         raise HTTPException(status_code=404, detail="Story not found")
     
-    image_file_id = story_data.get("image_file_id")
-    if image_file_id:
-        image_access_url = f"/story/image/{image_file_id}" 
-    else:
-        image_access_url = None
-    
+    # Construct URLs or methods for accessing the English and Cherokee content and image
     response_data = {
         "title": story_data["title"],
         "created_at": story_data["created_at"],
-        "image_access": image_access_url
+        "content_en_access": f"/story/content/{story_data['content_en_id']}",
+        "content_cherokee_access": f"/story/content/{story_data['content_cherokee_id']}",
+        "image_access": f"/story/image/{story_data['image_id']}"
     }
     return response_data
 
