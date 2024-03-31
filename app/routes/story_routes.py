@@ -25,12 +25,12 @@ class CustomJSONEncoder(JSONEncoder):
 async def root():
     return {"Welcome to Polyglot API"}
 
-@router.get("/image/{story_id}")
+@router.get("/resource/{story_id}")
 async def get_image(story_id: str):
-    file_path = RESOURCE_DIRECTORY / story_id
+    file_path = RESOURCE_DIRECTORY / f"{story_id}.png"
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(path=file_path, media_type='image/png')
+    return FileResponse(file_path)
 
 @router.get("/file/{file_id}")
 async def get_file(file_id: str):
@@ -61,7 +61,8 @@ async def read_items():
 async def create_story(title: str = Form(...), 
                        genre: str = Form(...), 
                        content_en: UploadFile = File(...), 
-                       content_cherokee: UploadFile = File(...), 
+                       content_cherokee: UploadFile = File(...),
+                       content_pheonetic: UploadFile = File(...),
                        image: UploadFile = File(...)):
     story_data = Story(title=title, genre=genre, created_at=datetime.datetime.now()).dict()
     story_data['genre'] = Genre.Genre[genre.upper()].value
@@ -80,7 +81,13 @@ async def create_story(title: str = Form(...),
         metadata={"story_id": inserted_id, "language": "cherokee"}
     )
     
-    image_file_path = RESOURCE_DIRECTORY / inserted_id
+    content_pheonetic_id = await grid_fs_bucket.upload_from_stream(
+        content_pheonetic.filename,
+        content_pheonetic.file.read(),
+        metadata={"story_id": inserted_id, "language": "pheonetic"}
+    )
+    
+    image_file_path = RESOURCE_DIRECTORY / f"{inserted_id}.png"
     async with aiofiles.open(image_file_path, 'wb') as out_file:
         content = await image.read()
         await out_file.write(content)
@@ -88,12 +95,14 @@ async def create_story(title: str = Form(...),
     # Update the story with the content and image IDs
     story_data['content_en'] = str(content_en_id)
     story_data['content_cherokee'] = str(content_cherokee_id)
+    story_data['content_pheonetic'] = str(content_pheonetic_id)
     
     await collection.update_one(
         {"_id": ObjectId(inserted_id)},
         {"$set": {
             "content_en_id": str(content_en_id), 
-            "content_chr_id": str(content_cherokee_id)
+            "content_chr_id": str(content_cherokee_id),
+            "content_pheonetic_id": str(content_pheonetic_id),
         }}
     )
     
@@ -102,7 +111,8 @@ async def create_story(title: str = Form(...),
         "title": title,
         "genre": genre,
         "content_en_id": str(content_en_id),
-        "content_chr_id": str(content_cherokee_id)
+        "content_chr_id": str(content_cherokee_id),
+        "content_pheonetic_id": str(content_pheonetic_id),
     }
 
 @router.get("/story/{story_id}")
@@ -143,11 +153,14 @@ async def delete_item(story_id: str):
     # Delete the content and image files
     content_en_id = deleted_item.get('content_en_id')
     content_chr_id = deleted_item.get('content_chr_id')
+    content_pheonetic_id = deleted_item.get('content_pheonetic_id')
     if content_en_id:
         await grid_fs_bucket.delete(ObjectId(content_en_id))
     if content_chr_id:
         await grid_fs_bucket.delete(ObjectId(content_chr_id))
-    image_file_path = RESOURCE_DIRECTORY / str(story_id)
+    if content_pheonetic_id:
+        await grid_fs_bucket.delete(ObjectId(content_pheonetic_id))
+    image_file_path = RESOURCE_DIRECTORY / f"str(story_id).png"
     if image_file_path.exists() and image_file_path.is_file():
         await image_file_path.unlink()
     
