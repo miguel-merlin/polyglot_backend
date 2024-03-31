@@ -7,3 +7,4 @@ class Story(BaseModel):
     genre: Genre
     content_en_id: str = None
     content_chr_id: str = None
+    content_pheonetic_id: str = None
